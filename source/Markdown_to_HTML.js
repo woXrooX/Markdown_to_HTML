@@ -33,7 +33,7 @@ export default function Markdown_to_HTML(markdown){
 
 	for(const line of lines)
 		if(line.trim() === '') paragraphs += "<br>";
-		else paragraphs += `<p class="text-white-space-pre">` + line + "</p>";
+		else paragraphs += `<p>${line}</p>`;
 
 	return paragraphs;
 }
