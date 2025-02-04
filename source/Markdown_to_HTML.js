@@ -1,3 +1,5 @@
+// woXrooX Flavored Markdown
+
 export default function Markdown_to_HTML(markdown){
 	if(typeof markdown !== 'string') return '';
 
