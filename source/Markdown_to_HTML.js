@@ -188,9 +188,16 @@ function process_blocks(HTML) {
 **bold**
 ***bold_italic***
 
-- a
-- b
-	- c
+1. First item
+2. Second item
+	1. Nested item 1
+	2. Nested item 2
+		- AA
+		- AB
+			1. Another one
+			1. Another one
+3. Third item
+
 <br><br>
 Check out [woXrooX's website](https://www.woXrooX.com).
 `
