@@ -32,8 +32,7 @@ export default function Markdown_to_HTML(markdown) {
 	// Process links [text](url)
 	HTML = HTML.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
 
-	// Process unordered lists
-	HTML = process_unordered_lists(HTML);
+	HTML = process_lists(HTML);
 
 	// Process blocks
 	return process_blocks(HTML);
@@ -43,11 +42,12 @@ export default function Markdown_to_HTML(markdown) {
 
 ///////// Helpers
 
-function process_unordered_lists(HTML) {
+function process_lists(HTML) {
 	const lines = HTML.split('\n');
 	let output = [];
-	let list_stack = []; // Stack to track nested list levels
+	let list_stack = []; // Stack to track nested list types and levels
 	let current_level = -1;
+	let number_counters = {}; // Track numbers for ordered list levels
 
 	for (let i = 0; i < lines.length; i++) {
 		const line = lines[i];
@@ -55,45 +55,78 @@ function process_unordered_lists(HTML) {
 		// Count leading tabs to determine nesting level
 		const leading_tabs = (line.match(/^\t*/)[0] || '').length;
 
-		// Check for valid list item format: dash followed by at least one space/tab
-		const is_list_item = line.trim().match(/^-[\s\t]+\S/);
+		// Each tab = 1 level
+		const level = leading_tabs;
 
-		if (is_list_item) {
-			// Each tab = 1 level
-			const level = leading_tabs;
+		// Check for list item types
+		const ordered_match = line.trim().match(/^\d+\.[\s\t]+\S/);
+		const unordered_match = line.trim().match(/^-[\s\t]+\S/);
 
-			// Remove '-' and trim
-			const content = line.trim().substring(1).trim();
+		if (ordered_match || unordered_match) {
+			const is_ordered = !!ordered_match;
+			const content = line.trim().replace(is_ordered ? /^\d+\.[\s\t]+/ : /^-[\s\t]+/,'');
+
+			// Initialize counter for new ordered list level
+			if (is_ordered && !number_counters[level]) number_counters[level] = 1;
 
 			if (level > current_level) {
 				// Start new nested list
-				list_stack.push('</ul>');
-				output.push('<ul>');
+				const list_type = is_ordered ? 'ol' : 'ul';
+				list_stack.push({ type: list_type, level });
+				output.push(`<${list_type}>`);
 				current_level = level;
 			}
 
 			else if (level < current_level) {
 				// Close deeper nested lists
 				while (current_level > level && list_stack.length > 0) {
-					output.push(list_stack.pop());
+					const last_list = list_stack.pop();
+					output.push(`</${last_list.type}>`);
+					if (last_list.type === 'ol') delete number_counters[last_list.level];
 					current_level--;
 				}
 			}
 
+			else if (level === current_level && list_stack.length > 0) {
+				// Check if we need to switch list type at the same level
+				const current_list = list_stack[list_stack.length - 1];
+				const current_type = current_list.type;
+				const new_type = is_ordered ? 'ol' : 'ul';
+
+				if (current_type !== new_type) {
+					// Close current list and start new one of different type
+					list_stack.pop();
+					output.push(`</${current_type}>`);
+					list_stack.push({ type: new_type, level });
+					output.push(`<${new_type}>`);
+
+					if (new_type === 'ol') number_counters[level] = 1;
+				}
+			}
+
 			output.push(`<li>${content}</li>`);
+
+			if (is_ordered) number_counters[level]++;
 		}
 
 		else {
 			// Close all open lists when encountering non-list content
-			while (list_stack.length > 0) output.push(list_stack.pop());
+			while (list_stack.length > 0) {
+				const last_list = list_stack.pop();
+				output.push(`</${last_list.type}>`);
+			}
 
+			number_counters = {};
 			current_level = -1;
 			output.push(line);
 		}
 	}
 
 	// Close any remaining open lists
-	while (list_stack.length > 0) output.push(list_stack.pop());
+	while (list_stack.length > 0) {
+		const last_list = list_stack.pop();
+		output.push(`</${last_list.type}>`);
+	}
 
 	return output.join('\n');
 }
