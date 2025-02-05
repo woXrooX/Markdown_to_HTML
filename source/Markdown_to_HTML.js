@@ -5,12 +5,18 @@ export default function Markdown_to_HTML(markdown) {
 
 	let HTML = markdown;
 
+	// Preserve <br> tags by replacing them with a placeholder
+	HTML = HTML.replace(/<br>/gi, '%%BR%%');
+
 	// Escape special characters (only once)
 	HTML = HTML.replace(/&/g, '&amp;')
 		.replace(/</g, '&lt;')
 		.replace(/>/g, '&gt;')
 		.replace(/"/g, '&quot;')
 		.replace(/'/g, '&#039;');
+
+	// Restore <br> tags
+	HTML = HTML.replace(/%%BR%%/g, '<br>');
 
 	// Process headers
 	HTML = HTML.replace(/^(#{1,6})\s+(.*)$/gm, function(match, hashes, content) {
@@ -152,6 +158,6 @@ function process_blocks(HTML) {
 - a
 - b
 	- c
-
+<br><br>
 Check out [woXrooX's website](https://www.woXrooX.com).
 `
