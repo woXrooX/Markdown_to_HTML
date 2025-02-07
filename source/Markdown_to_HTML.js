@@ -23,11 +23,10 @@ export default function Markdown_to_HTML(markdown) {
 		return `<h${hashes.length}>${content.trim()}</h${hashes.length}>`;
 	});
 
-	// Process **bold**
-	HTML = HTML.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
+	HTML = process_bold_and_italic(HTML);
 
-	// Process *italic*
-	HTML = HTML.replace(/\*(.*?)\*/g, "<em>$1</em>");
+	// Process images !file:image[alt_text](/path/to/image.jpg) - must come BEFORE links to avoid conflict
+	HTML = HTML.replace(/!file:image\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1">');
 
 	// Process links [text](url)
 	HTML = HTML.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
@@ -42,35 +41,64 @@ export default function Markdown_to_HTML(markdown) {
 
 ///////// Helpers
 
+function process_bold_and_italic(HTML){
+	let output = HTML;
+
+	// First handle combined bold+italic
+	output = output.replace(/\*\*\*(.*?)\*\*\*/g, "<strong><em>$1</em></strong>");
+
+	// Then handle remaining bold
+	output = output.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
+
+	// Finally handle remaining italic
+	output = output.replace(/\*(.*?)\*/g, "<em>$1</em>");
+
+	return output;
+}
+
 function process_lists(HTML) {
 	const lines = HTML.split('\n');
 	let output = [];
-	let list_stack = []; // Stack to track nested list types and levels
+	let list_stack = [];
 	let current_level = -1;
-	let number_counters = {}; // Track numbers for ordered list levels
+	let number_counters = {};
 
 	for (let i = 0; i < lines.length; i++) {
 		const line = lines[i];
+		const trimmed = line.trim();
 
-		// Count leading tabs to determine nesting level
+		// Empty line - close all open lists (keeping original behavior)
+		if (!trimmed) {
+			while (list_stack.length > 0) {
+				const last_list = list_stack.pop();
+				output.push(`</${last_list.type}>`);
+			}
+
+			current_level = -1;
+			output.push(line);
+			continue;
+		}
+
 		const leading_tabs = (line.match(/^\t*/)[0] || '').length;
-
-		// Each tab = 1 level
 		const level = leading_tabs;
-
-		// Check for list item types
-		const ordered_match = line.trim().match(/^\d+\.[\s\t]+\S/);
-		const unordered_match = line.trim().match(/^-[\s\t]+\S/);
+		const ordered_match = trimmed.match(/^\d+\.[\s\t]+\S/);
+		const unordered_match = trimmed.match(/^-[\s\t]+\S/);
 
 		if (ordered_match || unordered_match) {
 			const is_ordered = !!ordered_match;
-			const content = line.trim().replace(is_ordered ? /^\d+\.[\s\t]+/ : /^-[\s\t]+/,'');
+			const content = trimmed.replace(is_ordered ? /^\d+\.[\s\t]+/ : /^-[\s\t]+/,'');
 
-			// Initialize counter for new ordered list level
-			if (is_ordered && !number_counters[level]) number_counters[level] = 1;
+			// Handle level skipping
+			if (level > current_level + 1) {
+				// Insert intermediate levels
+				for (let l = current_level + 1; l < level; l++) {
+					const intermediate_type = is_ordered ? 'ol' : 'ul';
+					list_stack.push({ type: intermediate_type, level: l });
+					output.push(`<${intermediate_type}>`);
+				}
+			}
 
 			if (level > current_level) {
-				// Start new nested list
 				const list_type = is_ordered ? 'ol' : 'ul';
 				list_stack.push({ type: list_type, level });
 				output.push(`<${list_type}>`);
@@ -78,51 +106,42 @@ function process_lists(HTML) {
 			}
 
 			else if (level < current_level) {
-				// Close deeper nested lists
 				while (current_level > level && list_stack.length > 0) {
 					const last_list = list_stack.pop();
 					output.push(`</${last_list.type}>`);
-					if (last_list.type === 'ol') delete number_counters[last_list.level];
 					current_level--;
 				}
 			}
 
-			else if (level === current_level && list_stack.length > 0) {
-				// Check if we need to switch list type at the same level
+			// Handle list type switching at same level
+			if (level === current_level && list_stack.length > 0) {
 				const current_list = list_stack[list_stack.length - 1];
-				const current_type = current_list.type;
 				const new_type = is_ordered ? 'ol' : 'ul';
 
-				if (current_type !== new_type) {
-					// Close current list and start new one of different type
+				if (current_list.type !== new_type) {
 					list_stack.pop();
-					output.push(`</${current_type}>`);
+					output.push(`</${current_list.type}>`);
 					list_stack.push({ type: new_type, level });
 					output.push(`<${new_type}>`);
-
-					if (new_type === 'ol') number_counters[level] = 1;
 				}
 			}
 
 			output.push(`<li>${content}</li>`);
-
-			if (is_ordered) number_counters[level]++;
 		}
 
 		else {
-			// Close all open lists when encountering non-list content
+			// Non-list line - close all open lists
 			while (list_stack.length > 0) {
 				const last_list = list_stack.pop();
 				output.push(`</${last_list.type}>`);
 			}
 
-			number_counters = {};
 			current_level = -1;
 			output.push(line);
 		}
 	}
 
-	// Close any remaining open lists
+	// Close any remaining lists
 	while (list_stack.length > 0) {
 		const last_list = list_stack.pop();
 		output.push(`</${last_list.type}>`);
@@ -141,11 +160,15 @@ function process_blocks(HTML) {
 		const trimmed_block = blocks[i].trim();
 
 		// Skip wrapping if the line contains HTML tags for headers or lists
-		if (trimmed_block.startsWith('<h') ||
+		if (
+			trimmed_block.startsWith('<h') ||
 			trimmed_block.startsWith('<ul') ||
 			trimmed_block.startsWith('</ul') ||
+			trimmed_block.startsWith('<ol') ||
+			trimmed_block.startsWith('</ol') ||
 			trimmed_block.startsWith('<li') ||
-			trimmed_block.startsWith('</li')) {
+			trimmed_block.startsWith('</li')
+		) {
 
 			// If we have accumulated paragraph content, flush it first
 			if (current_paragraph.length > 0) {
@@ -200,4 +223,6 @@ function process_blocks(HTML) {
 
 <br><br>
 Check out [woXrooX's website](https://www.woXrooX.com).
+
+!file:image[alt_text](/images/x_logo_v1.3.png)
 `
