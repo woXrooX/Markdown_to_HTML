@@ -1,4 +1,4 @@
-// woXrooX Flavored Markdown
+///////// woXrooX Flavored Markdown
 
 export default function Markdown_to_HTML(markdown) {
 	if(typeof markdown !== 'string') return '';
@@ -201,28 +201,5 @@ function process_blocks(HTML) {
 
 
 
-/////// Sample MDs
-`
-# H1
-## H2
-### H3
-
-*italic*
-**bold**
-***bold_italic***
-
-1. First item
-2. Second item
-	1. Nested item 1
-	2. Nested item 2
-		- AA
-		- AB
-			1. Another one
-			1. Another one
-3. Third item
-
-<br><br>
-Check out [woXrooX's website](https://www.woXrooX.com).
-
-!file:image[alt_text](/images/x_logo_v1.3.png)
-`
+///////// Export to global scope
+if (typeof window !== 'undefined') window.Markdown_to_HTML = Markdown_to_HTML;
